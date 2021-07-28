@@ -7,6 +7,10 @@ function aave_calculator(
 	],
 	borrow_list=[
 		{'symbol':'USDT', 'cnt':1}, {'symbol':'LINK', 'cnt':1}, {'symbol':'ETH', 'cnt':1}, {'symbol':'WBTC', 'cnt':0.5},
+	],
+	// price_list에 특정 토큰의 가격을 입력하면 따로 price oracle에서 가격을 가지고 오지 않고 입력한 가격으로 계산함
+	price_list = [
+		{'symbol':'USDT', 'price':0.0005}, {'symbol':'WBTC', 'price':15},
 	]){
 	const thegraph_url = "https://api.thegraph.com/subgraphs/name/aave/protocol-v2"
 
@@ -32,12 +36,23 @@ function aave_calculator(
 				break;
 			}
 		}
+		for(let j=0; j<price_list.length; j++){
+			if (collateral_list[i]['symbol']==price_list[j]['symbol']){
+				collateral_list[i]['price'] = price_list[j]['price']*10**18
+				break;
+			}
+		}
 	}
 	for(let i=0; i<borrow_list.length; i++){
 		for(let j=0; j<borrow_available_list.length; j++){
 			if (borrow_list[i]['symbol']==borrow_available_list[j]['symbol']){
 				borrow_list[i]['address'] = borrow_available_list[j]['address'].toLowerCase()
-				borrow_list[i]['decimals'] = borrow_available_list[j]['decimals']
+				break;
+			}
+		}
+		for(let j=0; j<price_list.length; j++){
+			if (borrow_list[i]['symbol']==price_list[j]['symbol']){
+				borrow_list[i]['price'] = price_list[j]['price']*10**18
 				break;
 			}
 		}
@@ -80,19 +95,29 @@ function aave_calculator(
 		//borrow, collateral list 에 price data 할당
 		for(let i=0; i<collateral_list.length; i++){
 			for(let j=0; j<data['data']['priceOracleAssets'].length; j++){
-				if (collateral_list[i]['address']==data['data']['priceOracleAssets'][j]['id']){
-					collateral_list[i]['price'] = data['data']['priceOracleAssets'][j]['priceInEth']
-					collateral_list[i]['updated_at'] = data['data']['priceOracleAssets'][j]['lastUpdateTimestamp']
+				if (collateral_list[i]['address']==data['data']['priceOracleAssets'][j]['id'] && !collateral_list[i]['price']){
+					collateral_list[i]['price'] = parseFloat(data['data']['priceOracleAssets'][j]['priceInEth'])
 					break;
 				}
 			}
 		}
 		for(let i=0; i<borrow_list.length; i++){
 			for(let j=0; j<data['data']['priceOracleAssets'].length; j++){
-				if (borrow_list[i]['address']==data['data']['priceOracleAssets'][j]['id']){
-					borrow_list[i]['price'] = data['data']['priceOracleAssets'][j]['priceInEth']
-					borrow_list[i]['updated_at'] = data['data']['priceOracleAssets'][j]['lastUpdateTimestamp']
+				if (borrow_list[i]['address']==data['data']['priceOracleAssets'][j]['id'] && !borrow_list[i]['price']){
+					borrow_list[i]['price'] = parseFloat(data['data']['priceOracleAssets'][j]['priceInEth'])
 					break;
+				}
+			}
+		}
+
+		let price_list = []
+		for (let i=0; i<data['data']['priceOracleAssets'].length; i++){
+			for (let j=0; j<borrow_available_list.length; j++){
+				if (data['data']['priceOracleAssets'][i]['id']==borrow_available_list[j]['address'].toLowerCase()){
+					price_list.push({
+						symbol: borrow_available_list[j]['symbol'],
+						price: parseFloat(data['data']['priceOracleAssets'][i]['priceInEth'])*10**(-18)
+					})
 				}
 			}
 		}
@@ -120,8 +145,13 @@ function aave_calculator(
 		}
 
 		let health_factor = total_collateral_in_ETH/total_borrows_in_ETH
+
+		console.log(price_list)
 		console.log(health_factor)
-		return health_factor
+		return {
+			health_factor: health_factor,
+			price_list: price_list
+		}
 	}
 
 }
